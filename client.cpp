@@ -18,7 +18,7 @@ void send_message(int clientfd) {
 void receive_message(int clientfd) {
     char buffer[1024];
     int byte_read = recv(clientfd, buffer, 1024, 0);
-    while (byte_read > 0) {
+    if (byte_read > 0) {
 	    buffer[byte_read] = '\0';
 	    cout << "Server: " << buffer << endl;
     }
@@ -35,9 +35,9 @@ int main()
     clientfd = socket(AF_INET, SOCK_STREAM, 0);
     // specifying address
     sockaddr_in serverAddress;
-    serverAddress.sin_family = AF_INET;
-    serverAddress.sin_port = htons(port);
-    serverAddress.sin_addr.s_addr = INADDR_ANY;
+    serverAdd.sin_family = AF_INET;
+    serverAdd.sin_port = htons(port);
+    serverAdd.sin_addr.s_addr = INADDR_ANY;
 
     // sending connection request
     connect(clientfd, (struct sockaddr*)&serverAdd,

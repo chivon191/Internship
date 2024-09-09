@@ -24,7 +24,7 @@ void receive(int clientfd) {
 		buffer[byte_read] = '\0';
 		cout << "Client: " << buffer << endl;
 	}
-	if(byte_read < 0) {
+	if (byte_read < 0) {
 		perror("ERROR reading from client.");
 	}
 	close(clientfd);
@@ -82,9 +82,11 @@ int main()
 		error("ERROR on accept");
 	}
 	
-	cout << "Client connection established." << endl;
-	threads.push_back(thread(receive, clientfd));
-	threads.push_back(thread(send_message, clientfd));
+	while (clientfd !=0) {
+	    cout << "Client connection established." << endl;
+	    threads.push_back(thread(receive, clientfd));
+	    thread(send_message, clientfd).detach();
+	}
 
 	for (auto &thread : threads) 
 		thread.join();
