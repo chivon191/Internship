@@ -5,10 +5,13 @@
 #include <netinet/in.h>
 #include <string>
 #include <thread>
+#include <unistd.h>
+#include <vector>
 
 using namespace std;
+int running = 1;
 
-void error(char *msg)
+void error(const char *msg)
 {
 	perror(msg);
 	exit(1);
@@ -16,20 +19,26 @@ void error(char *msg)
 
 void receive(int clientfd) {
 	char buffer[1024];
-	int byte_read = fread(clientfd, buffer, 1024);
+	int byte_read = recv(clientfd, buffer, 1024, 0);
 	while (byte_read > 0) {
+		buffer[byte_read] = '\0';
 		cout << "Client: " << buffer << endl;
+	}
+	if(byte_read < 0) {
+		perror("ERROR reading from client.");
 	}
 	close(clientfd);
 	cout << "Client disconnected!" << endl;
 }
 
-void send(int sockfd) {
+void send_message(int clientfd) {
 	string message;
-	while (1) {
+	while(running) {
 		getline(cin, message);
-		if (message == "exit") 
-			close(sockfd);
+		if (message == "exit") { 
+			running = 0;
+			break;
+		}
 		send(clientfd, message.c_str(), message.size(), 0);
 	}
 }
@@ -37,21 +46,23 @@ void send(int sockfd) {
 int main()
 {
 	int sockfd, clientfd, port;
-	char buffer[256];
 	struct sockaddr_in serverAdd, clientAdd;
-	
+	socklen_t clientlen = sizeof(clientAdd);
+	vector<thread> threads;
+
 	cout << "Enter port: ";
 	cin >> port;
+	cin.ignore();
+
 	if(port == 0)
 	{
-		cout << stderr << "No port provided." << endl;
+		cerr << "No port provided." << endl;
 		return 1;
 	}
 
 	sockfd = socket(AF_INET, SOCK_STREAM, 0);
 	if(sockfd < 0){
-		cout << "Error opening socket." << endl;
-		return 1;
+		error("Error opening socket.");
 	}
 
 	serverAdd.sin_family = AF_INET;
@@ -59,29 +70,25 @@ int main()
 	serverAdd.sin_port = htons(port);
 			         
 	if (bind(sockfd, (struct sockaddr *) &serverAdd, sizeof(serverAdd)) < 0){
-		cout << "ERROR on binding" << endl;
-		return 1;
+		error("ERROR on binding");
 	}
+
 
 	cout << "Server listening on port " << port << endl;
 	listen(sockfd,5);			           				       
-	clientfd = accept(sockfd, (struct sockaddr *) &clientAdd, &sizeof(clientAdd);					     
+	clientfd = accept(sockfd, (struct sockaddr *) &clientAdd, &clientlen);					     
 	
 	if (clientfd < 0){
-		cout << "ERROR on accept" << endl;
-		return 1;
+		error("ERROR on accept");
 	}
 	
-	if (clientfd != 0) {
-		cout << "Client connection established." << endl;
-		pthread_t.push_back(thread(receive, clientfd));
-		thread(send, clientfd).detach();
-	}
+	cout << "Client connection established." << endl;
+	threads.push_back(thread(receive, clientfd));
+	threads.push_back(thread(send_message, clientfd));
 
 	for (auto &thread : threads) 
 		thread.join();
 
-	close(clientfd);							
 	close(sockfd);								
 	return 0; 
 }
