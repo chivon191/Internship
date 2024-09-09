@@ -8,20 +8,29 @@
 
 using namespace std;
 
-void send_message(int client) {
+void send_message(int sock) {
     string message;
-    while (1) {
+    while (true) {
         getline(cin, message);
-        send(client, message.c_str(), message.size(), 0);
+        if (message == "exit") {
+            break;
+        }
+        send(sock, message.c_str(), message.size(), 0);
     }
 }
 
-void receive_message(int client) {
+void receive_message(int sock) {
     char buffer[1024];
-    int byte_read = recv(client, buffer, 1024, 0);
-    if (byte_read > 0) {
-	    buffer[byte_read] = '\0';
-	    cout << "Server: " << buffer << endl;
+    int byte_read;
+    while (true) 
+    {
+	int byte_read = recv(sock, buffer, sizeof(buffer), 0);
+        if (byte_read <= 0) {
+                cout << "Server disconnected" <<endl;
+	        break;
+        }
+        buffer[byte_read] = '\0';
+	cout << "Server: " << buffer << endl;
     }
 }
 

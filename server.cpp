@@ -17,18 +17,23 @@ void error(const char *msg)
 	exit(1);
 }
 
-void receive(int client) {
+void receive(int sock) {
 	char buffer[1024];
-	int byte_read = recv(client, buffer, 1024, 0);
-	while (byte_read > 0) {
+	int byte_read;
+	while (true) {
+		byte_read = recv(sock, buffer, sizeof(buffer), 0);
+		if (byte_read <= 0) 
+		{
+			cout << "Client disconnected!" << endl;
+			close(sock);
+			break;
+		}
 		buffer[byte_read] = '\0';
 		cout << "Client: " << buffer << endl;
 	}
-	close(client);
-	cout << "Client disconnected!" << endl;
 }
 
-void send_message(int client) {
+void send_message(int sock) {
 	string message;
 	while(running) {
 		getline(cin, message);
@@ -36,7 +41,7 @@ void send_message(int client) {
 			running = 0;
 			break;
 		}
-		send(client, message.c_str(), message.size(), 0);
+		send(sock, message.c_str(), message.size(), 0);
 	}
 }
 
@@ -73,11 +78,14 @@ int main()
 	}
 	
 	cout << "Server listening on port " << port << endl;
-	listen(server,5);	
-	
-	client = accept(server, (struct sockaddr *) &address, &addresslen);					     
+	listen(server,5);						     
 		
-	while (client != -1) {
+	while (running) 
+	{
+	        client = accept(server, (struct sockaddr *) &address, &addresslen);
+	        if (client < 0) {
+	              error("ERROR on accept");
+	        }
 		cout << "Client connection established." << endl;
 	    	threads.push_back(thread(receive, client));
 	    	thread(send_message, client).detach();
