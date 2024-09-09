@@ -17,21 +17,18 @@ void error(const char *msg)
 	exit(1);
 }
 
-void receive(int clientfd) {
+void receive(int client) {
 	char buffer[1024];
-	int byte_read = recv(clientfd, buffer, 1024, 0);
+	int byte_read = recv(client, buffer, 1024, 0);
 	while (byte_read > 0) {
 		buffer[byte_read] = '\0';
 		cout << "Client: " << buffer << endl;
 	}
-	if (byte_read < 0) {
-		perror("ERROR reading from client.");
-	}
-	close(clientfd);
+	close(client);
 	cout << "Client disconnected!" << endl;
 }
 
-void send_message(int clientfd) {
+void send_message(int client) {
 	string message;
 	while(running) {
 		getline(cin, message);
@@ -39,15 +36,14 @@ void send_message(int clientfd) {
 			running = 0;
 			break;
 		}
-		send(clientfd, message.c_str(), message.size(), 0);
+		send(client, message.c_str(), message.size(), 0);
 	}
 }
 
 int main()
 {
-	int sockfd, clientfd, port;
-	struct sockaddr_in serverAdd, clientAdd;
-	socklen_t clientlen = sizeof(clientAdd);
+	int server, client, port;
+	struct sockaddr_in address;
 	vector<thread> threads;
 
 	cout << "Enter port: ";
@@ -60,37 +56,36 @@ int main()
 		return 1;
 	}
 
-	sockfd = socket(AF_INET, SOCK_STREAM, 0);
-	if(sockfd < 0){
+	server = socket(AF_INET, SOCK_STREAM, 0);
+	if(server < 0)
+	{
 		error("Error opening socket.");
 	}
 
-	serverAdd.sin_family = AF_INET;
-	serverAdd.sin_addr.s_addr = INADDR_ANY;
-	serverAdd.sin_port = htons(port);
+	address.sin_family = AF_INET;
+	address.sin_addr.s_addr = INADDR_ANY;
+	address.sin_port = htons(port);
+	socklen_t addresslen = sizeof(address);
 			         
-	if (bind(sockfd, (struct sockaddr *) &serverAdd, sizeof(serverAdd)) < 0){
+	if (bind(server, (struct sockaddr *)&address, addresslen) < 0)
+	{
 		error("ERROR on binding");
 	}
-
-
+	
 	cout << "Server listening on port " << port << endl;
-	listen(sockfd,5);			           				       
-	clientfd = accept(sockfd, (struct sockaddr *) &clientAdd, &clientlen);					     
+	listen(server,5);	
 	
-	if (clientfd < 0){
-		error("ERROR on accept");
-	}
-	
-	while (clientfd !=0) {
-	    cout << "Client connection established." << endl;
-	    threads.push_back(thread(receive, clientfd));
-	    thread(send_message, clientfd).detach();
+	client = accept(server, (struct sockaddr *) &address, &addresslen);					     
+		
+	while (client != -1) {
+		cout << "Client connection established." << endl;
+	    	threads.push_back(thread(receive, client));
+	    	thread(send_message, client).detach();
 	}
 
 	for (auto &thread : threads) 
 		thread.join();
 
-	close(sockfd);								
+	close(server);								
 	return 0; 
 }

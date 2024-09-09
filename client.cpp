@@ -2,22 +2,23 @@
 #include <iostream>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <arpa/inet.h> 
 #include <unistd.h>
 #include <thread>
 
 using namespace std;
 
-void send_message(int clientfd) {
+void send_message(int client) {
     string message;
     while (1) {
         getline(cin, message);
-        send(clientfd, message.c_str(), message.size(), 0);
+        send(client, message.c_str(), message.size(), 0);
     }
 }
 
-void receive_message(int clientfd) {
+void receive_message(int client) {
     char buffer[1024];
-    int byte_read = recv(clientfd, buffer, 1024, 0);
+    int byte_read = recv(client, buffer, 1024, 0);
     if (byte_read > 0) {
 	    buffer[byte_read] = '\0';
 	    cout << "Server: " << buffer << endl;
@@ -26,31 +27,32 @@ void receive_message(int clientfd) {
 
 int main()
 {
-    int clientfd, port;
-    struct sockaddr_in serverAdd;
+    int sock_client, port;
+    struct sockaddr_in address;
     cout << "Enter port to connect: ";
     cin >> port;
     cin.ignore();
     // creating socket
-    clientfd = socket(AF_INET, SOCK_STREAM, 0);
+    sock_client = socket(AF_INET, SOCK_STREAM, 0);
     // specifying address
-    sockaddr_in serverAddress;
-    serverAdd.sin_family = AF_INET;
-    serverAdd.sin_port = htons(port);
-    serverAdd.sin_addr.s_addr = INADDR_ANY;
+    address.sin_family = AF_INET;
+    address.sin_port = htons(port);
+    
+    const char* ip_loopback = "127.0.0.1";
+    inet_pton(AF_INET, ip_loopback, &address.sin_addr);
 
     // sending connection request
-    connect(clientfd, (struct sockaddr*)&serverAdd,
-            sizeof(serverAdd));
+    connect(sock_client, (struct sockaddr*)&address,
+            sizeof(address));
 
     // sending data
-    thread send_thread(send_message, clientfd);
-    thread receive_thread(receive_message, clientfd);
+    thread send_thread(send_message, sock_client);
+    thread receive_thread(receive_message, sock_client);
     
     send_thread.join();
     receive_thread.join();
 
     // closing socket
-    close(clientfd);
+    close(sock_client);
     return 0;
 }
