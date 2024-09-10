@@ -1,5 +1,6 @@
 #include <string>
 #include <iostream>
+#include <vector>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <arpa/inet.h> 
@@ -8,60 +9,94 @@
 
 using namespace std;
 
-void send_message(int sock) {
-    string message;
-    while (true) {
-        getline(cin, message);
-        if (message == "exit") {
+class Client {
+public:
+    Client(const string& serverIP, int port);
+    ~Client();
+    void start();
+
+private:
+    int clientSocket;
+    struct sockaddr_in address;
+    string serverIP;
+    bool running;
+
+    void send_message();
+    void receive_message();
+    void error(const string& msg);
+};
+
+Client::Client(const string& serverIP, int port) : serverIP(serverIP), running(true) {
+    clientSocket = socket(AF_INET, SOCK_STREAM, 0);
+    if (clientSocket < 0) {
+        error("Error opening socket.");
+    }
+
+    address.sin_family = AF_INET;
+    address.sin_port = htons(port);
+
+    if (inet_pton(AF_INET, serverIP.c_str(), &address.sin_addr) <= 0) {
+        error("Invalid address or address not supported.");
+    }
+
+    if (connect(clientSocket, (struct sockaddr*)&address, sizeof(address)) < 0) {
+        error("Connection failed.");
+    }
+}
+
+Client::~Client() {
+    close(clientSocket);
+}
+
+void Client::error(const string& msg) {
+    cerr << msg << endl;
+    exit(1);
+}
+
+void Client::receive_message() {
+    char buffer[1024];
+    int byteRead;
+    while (running) {
+        byteRead = recv(clientSocket, buffer, sizeof(buffer), 0);
+        if (byteRead <= 0) {
+            cout << "Server disconnected!" << endl;
+            running = false;
             break;
         }
-        send(sock, message.c_str(), message.size(), 0);
+        buffer[byteRead] = '\0';
+        cout << "Server: " << buffer << endl;
     }
 }
 
-void receive_message(int sock) {
-    char buffer[1024];
-    int byte_read;
-    while (true) 
-    {
-	int byte_read = recv(sock, buffer, sizeof(buffer), 0);
-        if (byte_read <= 0) {
-                cout << "Server disconnected" <<endl;
-	        break;
+void Client::send_message() {
+    string message;
+    while (running) {
+        getline(cin, message);
+        if (message == "exit") {
+            running = false;
+            break;
         }
-        buffer[byte_read] = '\0';
-	cout << "Server: " << buffer << endl;
+        send(clientSocket, message.c_str(), message.size(), 0);
     }
 }
 
-int main()
-{
-    int sock_client, port;
-    struct sockaddr_in address;
+void Client::start() {
+    thread send_thread(&Client::send_message, this);
+    thread receive_thread(&Client::receive_message, this);
+    send_thread.join();
+    receive_thread.join();
+}
+
+int main() {
+    string server_ip = "127.0.0.1";
+    int port;
+
     cout << "Enter port to connect: ";
     cin >> port;
     cin.ignore();
-    // creating socket
-    sock_client = socket(AF_INET, SOCK_STREAM, 0);
-    // specifying address
-    address.sin_family = AF_INET;
-    address.sin_port = htons(port);
-    
-    const char* ip_loopback = "127.0.0.1";
-    inet_pton(AF_INET, ip_loopback, &address.sin_addr);
 
-    // sending connection request
-    connect(sock_client, (struct sockaddr*)&address,
-            sizeof(address));
+    Client client(server_ip, port);
+    client.start();
 
-    // sending data
-    thread send_thread(send_message, sock_client);
-    thread receive_thread(receive_message, sock_client);
-    
-    send_thread.join();
-    receive_thread.join();
-
-    // closing socket
-    close(sock_client);
     return 0;
 }
