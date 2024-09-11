@@ -28,10 +28,9 @@ private:
 
     void receive_username(int clientSocket);
     void error(const char *msg);
-    void handle_client(int clientSocket);
+    void broadcast_message(const string &message, int clientSocket);
     void receive_message(int clientSocket);
     void send_message(int clientSocket);
-    void broadcast_message(const string& message, int senderSocket);
 };
 
 Server::Server(int port) : running(true) {
@@ -66,12 +65,6 @@ void Server::error(const char *msg) {
     exit(1);
 }
 
-void Server::handle_client(int clientSocket) {
-    thread(&Server::receive_username, this, clientSocket).detach();
-    thread(&Server::receive_message, this, clientSocket).detach();
-    thread(&Server::send_message, this, clientSocket).detach();
-}
-
 void Server::receive_username(int clientSocket) {
     char buffer[1024];
     int byte_read;
@@ -82,12 +75,25 @@ void Server::receive_username(int clientSocket) {
         return;
     }
     buffer[byte_read] = '\0';
-    string username(buffer);
+    string userName(buffer);
     {
         lock_guard<mutex> lock(mtx);
-        clientUsernames[clientSocket] = username;
+        clientUsernames[clientSocket] = userName;
     }
-    cout << username << " connected to server." << endl;
+    cout << userName << " connected to server." << endl;
+}
+
+void Server::broadcast_message(const string &message, int clientSocket) {
+    lock_guard<mutex> lock(mtx);
+    string fullMessage = clientUsernames[clientSocket] + ": " + message;
+    for (const auto& [socket, username] : clientUsernames) {
+        if (socket != clientSocket) {
+            if (clientUsernames[clientSocket] == "") {
+                fullMessage = "Server: " + message;
+            }
+            send(socket, fullMessage.c_str(), fullMessage.size(), 0);
+        }
+    }
 }
 
 void Server::receive_message(int clientSocket) {
@@ -126,28 +132,15 @@ void Server::send_message(int clientSocket) {
     }
 }
 
-void Server::broadcast_message(const string& message, int senderSocket) {
-    lock_guard<mutex> lock(mtx);
-    string fullMessage;
-    for (const auto& [socket, username] : clientUsernames) {
-        if (socket != senderSocket) {
-            if (clientUsernames[senderSocket] == "") {
-                fullMessage = "Server: " + message;
-            }
-            else 
-                fullMessage = clientUsernames[senderSocket] + ": " + message;
-            send(socket, fullMessage.c_str(), fullMessage.size(), 0);
-        }
-    }
-}
-
 void Server::start() {
     while (running) {
         int clientSocket = accept(serverSocket, (struct sockaddr *)&address, &addresslen);
         if (clientSocket < 0) {
             error("ERROR on accept");
         }
-        handle_client(clientSocket);
+        thread(&Server::receive_username, this, clientSocket).detach();
+        thread(&Server::receive_message, this, clientSocket).detach();
+        thread(&Server::send_message, this, clientSocket).detach();
     }
 } 
 

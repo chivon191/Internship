@@ -45,8 +45,7 @@ Client::Client(const string& serverIP, int port, const string& username)
         error("Connection failed.");
     }
 
-    // Send username to server
-    string username_message = username + '\0';  // Append newline for delimiter
+    string username_message = username + '\0';  
     send(clientSocket, username_message.c_str(), username_message.size(), 0);
 }
 
@@ -79,7 +78,7 @@ void Client::send_message() {
     while (running) {
         getline(cin, message);
         if (message.empty()) {
-            continue;  // Skip sending empty messages
+            continue;
         }
         if (message == "exit") {
             running = false;
