@@ -11,7 +11,7 @@ using namespace std;
 
 class Client {
 public:
-    Client(const string& serverIP, int port);
+    Client(const string& serverIP, int port, const string& username);
     ~Client();
     void start();
 
@@ -19,6 +19,7 @@ private:
     int clientSocket;
     struct sockaddr_in address;
     string serverIP;
+    string username;
     bool running;
 
     void send_message();
@@ -26,7 +27,8 @@ private:
     void error(const string& msg);
 };
 
-Client::Client(const string& serverIP, int port) : serverIP(serverIP), running(true) {
+Client::Client(const string& serverIP, int port, const string& username) 
+    : serverIP(serverIP), username(username), running(true) {
     clientSocket = socket(AF_INET, SOCK_STREAM, 0);
     if (clientSocket < 0) {
         error("Error opening socket.");
@@ -42,6 +44,10 @@ Client::Client(const string& serverIP, int port) : serverIP(serverIP), running(t
     if (connect(clientSocket, (struct sockaddr*)&address, sizeof(address)) < 0) {
         error("Connection failed.");
     }
+
+    // Send username to server
+    string username_message = username + '\0';  // Append newline for delimiter
+    send(clientSocket, username_message.c_str(), username_message.size(), 0);
 }
 
 Client::~Client() {
@@ -57,14 +63,14 @@ void Client::receive_message() {
     char buffer[1024];
     int byteRead;
     while (running) {
-        byteRead = recv(clientSocket, buffer, sizeof(buffer), 0);
+        byteRead = recv(clientSocket, buffer, sizeof(buffer) - 1, 0);
         if (byteRead <= 0) {
             cout << "Server disconnected!" << endl;
             running = false;
             break;
         }
         buffer[byteRead] = '\0';
-        cout << "Server: " << buffer << endl;
+        cout << buffer << endl;
     }
 }
 
@@ -72,6 +78,9 @@ void Client::send_message() {
     string message;
     while (running) {
         getline(cin, message);
+        if (message.empty()) {
+            continue;  // Skip sending empty messages
+        }
         if (message == "exit") {
             running = false;
             break;
@@ -90,12 +99,17 @@ void Client::start() {
 int main() {
     string server_ip = "127.0.0.1";
     int port;
+    string username;
+
+    cout << "Enter your username: ";
+    cin >> username;
+    cin.ignore();
 
     cout << "Enter port to connect: ";
     cin >> port;
     cin.ignore();
 
-    Client client(server_ip, port);
+    Client client(server_ip, port, username);
     client.start();
 
     return 0;

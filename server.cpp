@@ -1,4 +1,3 @@
-#include <stdio.h>
 #include <iostream>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -7,36 +6,41 @@
 #include <thread>
 #include <unistd.h>
 #include <vector>
+#include <map>
+#include <mutex>
 
 using namespace std;
 
 class Server {
 public:
-	Server(int port);
-	~Server();
-	void start();
+    Server(int port);
+    ~Server();
+    void start();
 
 private:
-	int serverSocket, clientSocket;
+    int serverSocket;
     struct sockaddr_in address;
     socklen_t addresslen = sizeof(address);
-	vector<thread> threads;
-	bool running;
-	void error(const char *msg);
-	void handle_client(int clientSocket);
-	void receive_message(int clientSocket);
-	void send_message(int clientSocket);
+    vector<thread> threads;
+    map<int, string> clientUsernames;
+    mutex mtx;  
+    bool running;
+
+    void receive_username(int clientSocket);
+    void error(const char *msg);
+    void handle_client(int clientSocket);
+    void receive_message(int clientSocket);
+    void send_message(int clientSocket);
+    void broadcast_message(const string& message, int senderSocket);
 };
 
 Server::Server(int port) : running(true) {
-	struct sockaddr_in address;
-	serverSocket = socket(AF_INET, SOCK_STREAM, 0);
-	if(serverSocket < 0)
-	{
-		error("Error opening socket.");
-	}
+    serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+    if (serverSocket < 0) {
+        error("Error opening socket.");
+    }
 
-	address.sin_family = AF_INET;
+    address.sin_family = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY;
     address.sin_port = htons(port);
 
@@ -63,8 +67,27 @@ void Server::error(const char *msg) {
 }
 
 void Server::handle_client(int clientSocket) {
-    threads.push_back(thread(&Server::receive_message, this, clientSocket));
+    thread(&Server::receive_username, this, clientSocket).detach();
+    thread(&Server::receive_message, this, clientSocket).detach();
     thread(&Server::send_message, this, clientSocket).detach();
+}
+
+void Server::receive_username(int clientSocket) {
+    char buffer[1024];
+    int byte_read;
+    byte_read = recv(clientSocket, buffer, sizeof(buffer), 0);
+    if (byte_read <= 0) {
+        cout << "Client disconnected!" << endl;
+        close(clientSocket);
+        return;
+    }
+    buffer[byte_read] = '\0';
+    string username(buffer);
+    {
+        lock_guard<mutex> lock(mtx);
+        clientUsernames[clientSocket] = username;
+    }
+    cout << username << " connected to server." << endl;
 }
 
 void Server::receive_message(int clientSocket) {
@@ -73,12 +96,21 @@ void Server::receive_message(int clientSocket) {
     while (true) {
         byte_read = recv(clientSocket, buffer, sizeof(buffer), 0);
         if (byte_read <= 0) {
-            cout << "Client disconnected!" << endl;
+            {
+                lock_guard<mutex> lock(mtx);
+                cout << clientUsernames[clientSocket] << " disconnected!" << endl;
+                clientUsernames.erase(clientSocket);
+            }
             close(clientSocket);
             break;
         }
         buffer[byte_read] = '\0';
-        cout << "Client: " << buffer << endl;
+        string message = buffer;
+        {
+            lock_guard<mutex> lock(mtx);
+            cout << clientUsernames[clientSocket] << ": " << message << endl;
+        }
+        broadcast_message(message, clientSocket);
     }
 }
 
@@ -90,7 +122,22 @@ void Server::send_message(int clientSocket) {
             running = false;
             break;
         }
-        send(clientSocket, message.c_str(), message.size(), 0);
+        broadcast_message(message, -1);
+    }
+}
+
+void Server::broadcast_message(const string& message, int senderSocket) {
+    lock_guard<mutex> lock(mtx);
+    string fullMessage;
+    for (const auto& [socket, username] : clientUsernames) {
+        if (socket != senderSocket) {
+            if (clientUsernames[senderSocket] == "") {
+                fullMessage = "Server: " + message;
+            }
+            else 
+                fullMessage = clientUsernames[senderSocket] + ": " + message;
+            send(socket, fullMessage.c_str(), fullMessage.size(), 0);
+        }
     }
 }
 
@@ -100,10 +147,9 @@ void Server::start() {
         if (clientSocket < 0) {
             error("ERROR on accept");
         }
-        cout << "Client connection established." << endl;
         handle_client(clientSocket);
     }
-}
+} 
 
 int main() {
     int port;
