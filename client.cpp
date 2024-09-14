@@ -17,10 +17,10 @@ public:
     void start();
 
 private:
+    int sockfd;
     string serverIP;
     string username;
     bool running;
-    mutex mtx;
 
     void send_message();  
     void receive_message();
@@ -28,10 +28,13 @@ private:
 };
 
 Client::Client(const string& serverIP, int port, const string& username) 
-    : Communication(socket(AF_INET, SOCK_STREAM, 0)), serverIP(serverIP), username(username), running(true) {
-    if (socket_fd < 0) {
+    : serverIP(serverIP), username(username), running(true), Communication(-1) {
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0) {
         error("Error opening socket.");
     }
+
+    Communication::socketfd = sockfd;  
 
     sockaddr_in address;
     address.sin_family = AF_INET;
@@ -41,15 +44,15 @@ Client::Client(const string& serverIP, int port, const string& username)
         error("Invalid address or address not supported.");
     }
 
-    if (connect(socket_fd, (struct sockaddr*)&address, sizeof(address)) < 0) {
+    if (connect(sockfd, (struct sockaddr*)&address, sizeof(address)) < 0) {
         error("Connection failed.");
     }
-    Communication comm(socket_fd);
-    comm.send_message(username);
+    Communication::send_message(username);
 }
 
+
 Client::~Client() {
-    close(socket_fd);
+    close(sockfd);
 }
 
 void Client::error(const string& msg) {
@@ -63,7 +66,7 @@ void Client::receive_message() {
         if (message.empty()) {
             cout << "Server disconnected!" << endl;
             running = false;
-            close(socket_fd);
+            close(sockfd);
             return;
         }
         cout << message << endl;
@@ -74,14 +77,9 @@ void Client::send_message() {
     string message;
     while (running) {
         getline(cin, message);
-        if (message == "exit") {
-            running = false;
-            close(socket_fd);
-            return;
-        }
         Communication::send_message(message);
     }
-    close(socket_fd);  
+    close(sockfd);  
 }
 
 void Client::start() {

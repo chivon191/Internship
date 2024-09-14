@@ -34,7 +34,7 @@ private:
     void send_message();
 };
 
-Server::Server(int port) : Communication(listener), running(true) {
+Server::Server(int port) : Communication(-1), running(true) {
     listener = socket(AF_INET, SOCK_STREAM, 0);
     if (listener < 0) {
         error("Error opening socket.");
@@ -123,11 +123,6 @@ void Server::send_message() {
     string message;
     while (running) {
         getline(cin, message);
-        if (message == "exit") {
-            running = false;
-            close(listener);
-            return;
-        }
         broadcast_message(message, -1);
     }
 }
