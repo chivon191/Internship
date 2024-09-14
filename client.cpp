@@ -6,34 +6,34 @@
 #include <arpa/inet.h> 
 #include <unistd.h>
 #include <thread>
+#include "communication.h"
 
 using namespace std;
 
-class Client {
+class Client : public Communication {
 public:
     Client(const string& serverIP, int port, const string& username);
     ~Client();
     void start();
 
 private:
-    int clientSocket;
-    struct sockaddr_in address;
     string serverIP;
     string username;
     bool running;
+    mutex mtx;
 
-    void send_message();
+    void send_message();  
     void receive_message();
     void error(const string& msg);
 };
 
 Client::Client(const string& serverIP, int port, const string& username) 
-    : serverIP(serverIP), username(username), running(true) {
-    clientSocket = socket(AF_INET, SOCK_STREAM, 0);
-    if (clientSocket < 0) {
+    : Communication(socket(AF_INET, SOCK_STREAM, 0)), serverIP(serverIP), username(username), running(true) {
+    if (socket_fd < 0) {
         error("Error opening socket.");
     }
 
+    sockaddr_in address;
     address.sin_family = AF_INET;
     address.sin_port = htons(port);
 
@@ -41,16 +41,15 @@ Client::Client(const string& serverIP, int port, const string& username)
         error("Invalid address or address not supported.");
     }
 
-    if (connect(clientSocket, (struct sockaddr*)&address, sizeof(address)) < 0) {
+    if (connect(socket_fd, (struct sockaddr*)&address, sizeof(address)) < 0) {
         error("Connection failed.");
     }
-
-    string username_message = username + '\0';  
-    send(clientSocket, username_message.c_str(), username_message.size(), 0);
+    Communication comm(socket_fd);
+    comm.send_message(username);
 }
 
 Client::~Client() {
-    close(clientSocket);
+    close(socket_fd);
 }
 
 void Client::error(const string& msg) {
@@ -59,33 +58,30 @@ void Client::error(const string& msg) {
 }
 
 void Client::receive_message() {
-    char buffer[1024];
-    int byteRead;
     while (running) {
-        byteRead = recv(clientSocket, buffer, sizeof(buffer) - 1, 0);
-        if (byteRead <= 0) {
+        string message = Communication::receive_message();
+        if (message.empty()) {
             cout << "Server disconnected!" << endl;
             running = false;
-            break;
+            close(socket_fd);
+            return;
         }
-        buffer[byteRead] = '\0';
-        cout << buffer << endl;
+        cout << message << endl;
     }
 }
 
-void Client::send_message() {
+void Client::send_message() { 
     string message;
     while (running) {
         getline(cin, message);
-        if (message.empty()) {
-            continue;
-        }
         if (message == "exit") {
             running = false;
-            break;
+            close(socket_fd);
+            return;
         }
-        send(clientSocket, message.c_str(), message.size(), 0);
+        Communication::send_message(message);
     }
+    close(socket_fd);  
 }
 
 void Client::start() {
@@ -97,15 +93,11 @@ void Client::start() {
 
 int main() {
     string server_ip = "127.0.0.1";
-    int port;
+    int port = 8000;
     string username;
 
     cout << "Enter your username: ";
     cin >> username;
-    cin.ignore();
-
-    cout << "Enter port to connect: ";
-    cin >> port;
     cin.ignore();
 
     Client client(server_ip, port, username);

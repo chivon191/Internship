@@ -8,34 +8,35 @@
 #include <vector>
 #include <map>
 #include <mutex>
+#include "communication.h"
 
 using namespace std;
 
-class Server {
+class Server : public Communication {
 public:
     Server(int port);
     ~Server();
     void start();
 
 private:
-    int serverSocket;
+    int listener;
     struct sockaddr_in address;
     socklen_t addresslen = sizeof(address);
     vector<thread> threads;
     map<int, string> clientUsernames;
-    mutex mtx;  
+    mutex mtx;
     bool running;
 
-    void receive_username(int clientSocket);
+    void receive_username(int sockfd);
     void error(const char *msg);
-    void broadcast_message(const string &message, int clientSocket);
-    void receive_message(int clientSocket);
-    void send_message(int clientSocket);
+    void broadcast_message(const string &message, int sockfd);
+    void receive_message(int sockfd);
+    void send_message();
 };
 
-Server::Server(int port) : running(true) {
-    serverSocket = socket(AF_INET, SOCK_STREAM, 0);
-    if (serverSocket < 0) {
+Server::Server(int port) : Communication(listener), running(true) {
+    listener = socket(AF_INET, SOCK_STREAM, 0);
+    if (listener < 0) {
         error("Error opening socket.");
     }
 
@@ -43,16 +44,19 @@ Server::Server(int port) : running(true) {
     address.sin_addr.s_addr = INADDR_ANY;
     address.sin_port = htons(port);
 
-    if (bind(serverSocket, (struct sockaddr *)&address, addresslen) < 0) {
+    int opt = 1;
+    setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    
+    if (bind(listener, (struct sockaddr *)&address, addresslen) < 0) {
         error("ERROR on binding");
     }
 
     cout << "Server listening on port " << port << endl;
-    listen(serverSocket, 5);
+    listen(listener, 5);
 }
 
 Server::~Server() {
-    close(serverSocket);
+    close(listener);
     for (auto &t : threads) {
         if (t.joinable()) {
             t.join();
@@ -65,98 +69,84 @@ void Server::error(const char *msg) {
     exit(1);
 }
 
-void Server::receive_username(int clientSocket) {
-    char buffer[1024];
-    int byte_read;
-    byte_read = recv(clientSocket, buffer, sizeof(buffer), 0);
-    if (byte_read <= 0) {
+void Server::receive_username(int sockfd) {
+    Communication comm(sockfd);
+    string userName = comm.receive_message();
+    if (userName.empty()) {
         cout << "Client disconnected!" << endl;
-        close(clientSocket);
+        close(sockfd);
         return;
     }
-    buffer[byte_read] = '\0';
-    string userName(buffer);
     {
         lock_guard<mutex> lock(mtx);
-        clientUsernames[clientSocket] = userName;
+        clientUsernames[sockfd] = userName;
     }
     cout << userName << " connected to server." << endl;
 }
 
-void Server::broadcast_message(const string &message, int clientSocket) {
+void Server::broadcast_message(const string &message, int sockfd) {
     lock_guard<mutex> lock(mtx);
-    string fullMessage = clientUsernames[clientSocket] + ": " + message;
+    string fullMessage = clientUsernames[sockfd] + ": " + message;
     for (const auto& [socket, username] : clientUsernames) {
-        if (socket != clientSocket) {
-            if (clientUsernames[clientSocket] == "") {
+        if (socket != sockfd) {
+            if (clientUsernames[sockfd] == "") {
                 fullMessage = "Server: " + message;
             }
-            send(socket, fullMessage.c_str(), fullMessage.size(), 0);
+            Communication comm(socket);
+            comm.send_message(fullMessage);
         }
     }
 }
 
-void Server::receive_message(int clientSocket) {
-    char buffer[1024];
-    int byte_read;
+void Server::receive_message(int sockfd) {
+    Communication comm(sockfd);
     while (true) {
-        byte_read = recv(clientSocket, buffer, sizeof(buffer), 0);
-        if (byte_read <= 0) {
+        string message = comm.receive_message();
+        if (message.empty()) {
             {
                 lock_guard<mutex> lock(mtx);
-                cout << clientUsernames[clientSocket] << " disconnected!" << endl;
-                clientUsernames.erase(clientSocket);
+                cout << clientUsernames[sockfd] << " disconnected!" << endl;
+                clientUsernames.erase(sockfd);
             }
-            close(clientSocket);
+            close(sockfd);
             break;
         }
-        buffer[byte_read] = '\0';
-        string message = buffer;
         {
             lock_guard<mutex> lock(mtx);
-            cout << clientUsernames[clientSocket] << ": " << message << endl;
+            cout << clientUsernames[sockfd] << ": " << message << endl;
         }
-        broadcast_message(message, clientSocket);
+        broadcast_message(message, sockfd);
     }
 }
 
-void Server::send_message(int clientSocket) {
+void Server::send_message() {
     string message;
     while (running) {
         getline(cin, message);
         if (message == "exit") {
             running = false;
-            break;
+            close(listener);
+            return;
         }
         broadcast_message(message, -1);
     }
 }
 
 void Server::start() {
+    threads.emplace_back(&Server::send_message, this);
     while (running) {
-        int clientSocket = accept(serverSocket, (struct sockaddr *)&address, &addresslen);
-        if (clientSocket < 0) {
+        int sockfd = accept(listener, (struct sockaddr *)&address, &addresslen);
+        if (sockfd < 0) {
             error("ERROR on accept");
         }
-        thread(&Server::receive_username, this, clientSocket).detach();
-        thread(&Server::receive_message, this, clientSocket).detach();
-        thread(&Server::send_message, this, clientSocket).detach();
+        threads.emplace_back(&Server::receive_username, this, sockfd);
+        threads.emplace_back(&Server::receive_message, this, sockfd);
     }
-} 
+}
 
 int main() {
-    int port;
-    cout << "Enter port: ";
-    cin >> port;
-    cin.ignore();
-
-    if (port == 0) {
-        cerr << "No port provided." << endl;
-        return 1;
-    }
-
+    int port = 8000;
     Server server(port);
     server.start();
-
     return 0;
 }
