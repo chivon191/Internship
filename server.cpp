@@ -2,6 +2,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <arpa/inet.h> 
 #include <string>
 #include <thread>
 #include <unistd.h>
@@ -41,7 +42,7 @@ Server::Server(int port) : Communication(-1), running(true) {
     }
 
     address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
+    inet_pton(AF_INET, "127.0.0.1", &address.sin_addr);
     address.sin_port = htons(port);
 
     int opt = 1;
