@@ -15,11 +15,13 @@ using namespace std;
 
 class Server : public Communication {
 public:
-    Server(int port);
+    Server();
     ~Server();
     void start();
 
 private:
+    string serverIP = "127.0.0.1";
+    int port = 8000;
     int listener;
     struct sockaddr_in address;
     socklen_t addresslen = sizeof(address);
@@ -35,14 +37,14 @@ private:
     void send_message();
 };
 
-Server::Server(int port) : Communication(-1), running(true) {
+Server::Server() : Communication(-1), running(true) {
     listener = socket(AF_INET, SOCK_STREAM, 0);
     if (listener < 0) {
         error("Error opening socket.");
     }
 
     address.sin_family = AF_INET;
-    inet_pton(AF_INET, "127.0.0.1", &address.sin_addr);
+    inet_pton(AF_INET, serverIP.c_str(), &address.sin_addr);
     address.sin_port = htons(port);
 
     int opt = 1;
@@ -131,18 +133,17 @@ void Server::send_message() {
 void Server::start() {
     threads.emplace_back(&Server::send_message, this);
     while (running) {
-        int sockfd = accept(listener, (struct sockaddr *)&address, &addresslen);
-        if (sockfd < 0) {
+        int newSocket = accept(listener, (struct sockaddr *)&address, &addresslen);
+        if (newSocket < 0) {
             error("ERROR on accept");
         }
-        threads.emplace_back(&Server::receive_username, this, sockfd);
-        threads.emplace_back(&Server::receive_message, this, sockfd);
+        threads.emplace_back(&Server::receive_username, this, newSocket);
+        threads.emplace_back(&Server::receive_message, this, newSocket);
     }
 }
 
 int main() {
-    int port = 8000;
-    Server server(port);
+    Server server;
     server.start();
     return 0;
 }

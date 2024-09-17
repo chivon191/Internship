@@ -12,13 +12,14 @@ using namespace std;
 
 class Client : public Communication {
 public:
-    Client(const string& serverIP, int port, const string& username);
+    Client(const string& username);
     ~Client();
     void start();
 
 private:
+    string serverIP = "127.0.0.1";
+    int port = 8000;
     int sockfd;
-    string serverIP;
     string username;
     bool running;
 
@@ -27,8 +28,8 @@ private:
     void error(const string& msg);
 };
 
-Client::Client(const string& serverIP, int port, const string& username) 
-    : serverIP(serverIP), username(username), running(true), Communication(-1) {
+Client::Client(const string& username) 
+    : username(username), running(true), Communication(-1) {
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {
         error("Error opening socket.");
@@ -90,16 +91,11 @@ void Client::start() {
 }
 
 int main() {
-    string server_ip = "127.0.0.1";
-    int port = 8000;
     string username;
-
     cout << "Enter your username: ";
     cin >> username;
     cin.ignore();
-
-    Client client(server_ip, port, username);
+    Client client(username);
     client.start();
-
     return 0;
 }
